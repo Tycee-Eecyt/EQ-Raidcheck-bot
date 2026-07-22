@@ -1,0 +1,231 @@
+{
+  "raidchecks": {
+    "1529563204861169861": {
+      "messageId": "1529563204861169861",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Warrior:1, Cleric:3, Enchanter:1, Wizard:1",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "Enchanter": [],
+        "Wizard": []
+      }
+    },
+    "1529563825508974726": {
+      "messageId": "1529563825508974726",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Warrior:1, Cleric:3, Enchanter:1, Wizard:1",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "Enchanter": [],
+        "Wizard": []
+      }
+    },
+    "1529565584994336840": {
+      "messageId": "1529565584994336840",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Warrior:1, Cleric:3, Enchanter:1, Wizard:1",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "Enchanter": [],
+        "Wizard": []
+      }
+    },
+    "1529575313066164239": {
+      "messageId": "1529575313066164239",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Warrior:1, Cleric:3, Enchanter:1, Wizard:1",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [
+          {
+            "id": "195266577019568137",
+            "displayName": "Tyler",
+            "className": null
+          }
+        ],
+        "Cleric": [],
+        "Enchanter": [],
+        "Wizard": []
+      }
+    },
+    "1529581127533072476": {
+      "messageId": "1529581127533072476",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):10",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "DPS(Wizard|Rogue|Monk)": []
+      }
+    },
+    "1529581670586519633": {
+      "messageId": "1529581670586519633",
+      "channelId": "1529529965035655201",
+      "target": "Trakanon",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):10",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "DPS(Wizard|Rogue|Monk)": []
+      }
+    },
+    "1529594120719438025": {
+      "messageId": "1529594120719438025",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):10",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [
+          {
+            "id": "195266577019568137",
+            "displayName": "Zoic",
+            "className": null
+          }
+        ],
+        "DPS(Wizard|Rogue|Monk)": []
+      }
+    },
+    "1529598037717155922": {
+      "messageId": "1529598037717155922",
+      "channelId": "1529529965035655201",
+      "target": "VS aka Venril sathir",
+      "needs": "Tank(Warrior|Ranger|Monk|Paladin|Shadowknight):1, Cleric:2, Rune Chain(Enchanter):3, DPS(Wizard|Rogue|Monk):10",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Tank(Warrior|Ranger|Monk|Paladin|Shadowknight)": [
+          {
+            "id": "195266577019568137",
+            "displayName": "Zoic",
+            "className": "Warrior"
+          }
+        ],
+        "Cleric": [],
+        "Rune Chain(Enchanter)": [],
+        "DPS(Wizard|Rogue|Monk)": []
+      }
+    },
+    "1529601928852410382": {
+      "messageId": "1529601928852410382",
+      "channelId": "1529529965035655201",
+      "target": "Lord Doljonijiarnimorinar Bob",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):11",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "DPS(Wizard|Rogue|Monk)": []
+      }
+    },
+    "1529602619662798971": {
+      "messageId": "1529602619662798971",
+      "channelId": "1529529965035655201",
+      "target": "Lord Doljonijiarnimorinar Bob",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):11",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "DPS(Wizard|Rogue|Monk)": [
+          {
+            "id": "195266577019568137",
+            "displayName": "Zoic",
+            "className": "Rogue"
+          }
+        ]
+      }
+    },
+    "1529603001650516010": {
+      "messageId": "1529603001650516010",
+      "channelId": "1529529965035655201",
+      "target": "Lord Doljonijiarnimorinar Bob",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):11, Puller(Enchanter):1",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "DPS(Wizard|Rogue|Monk)": [],
+        "Puller(Enchanter)": []
+      }
+    },
+    "1529603462235426819": {
+      "messageId": "1529603462235426819",
+      "channelId": "1529529965035655201",
+      "target": "Lord Doljonijiarnimorinar Bob",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):11, Puller(Enchanter):1",
+      "timeframe": "",
+      "tag": "batphone",
+      "windowHours": 16,
+      "claims": {
+        "Warrior": [],
+        "Cleric": [],
+        "DPS(Wizard|Rogue|Monk)": [],
+        "Puller(Enchanter)": []
+      }
+    }
+  },
+  "presets": {
+    "venril-sathir": {
+      "target": "Venril Sathir",
+      "needs": "Cleric:5, Tank(Warrior|Paladin|Shadow Knight|Ranger):1, DPS(Wizard|Rogue|Monk):10",
+      "tag": "batphone",
+      "windowHours": 16
+    },
+    "vs": {
+      "target": "VS aka Venril sathir",
+      "needs": "Tank(Warrior|Ranger|Monk|Paladin|Shadowknight):1, Cleric:2, Rune Chain(Enchanter):3, DPS(Wizard|Rogue|Monk):10",
+      "tag": "batphone",
+      "windowHours": 16
+    },
+    "lord-doljonijiarnimorinar": {
+      "target": "Lord Doljonijiarnimorinar Bob",
+      "needs": "Warrior:1, Cleric:5, DPS(Wizard|Rogue|Monk):11, Puller(Enchanter):1",
+      "tag": "batphone",
+      "windowHours": 16
+    }
+  },
+  "guildSettings": {
+    "1099096505702428712": {
+      "raidcheckChannelId": "1529529965035655201"
+    }
+  },
+  "disabledPresets": {
+    "vs-pop": true
+  }
+}
