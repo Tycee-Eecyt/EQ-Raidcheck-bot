@@ -7,6 +7,7 @@ A simple Discord bot for EverQuest-style raid checks. It lets you create a messa
 - Create a raid target with role requirements such as `Warrior:1,Cleric:3,Enchanter:1,Wizard:1`
 - Editable requirements for each target
 - Clickable role buttons that update the message in real time
+- One-hour signup countdown that closes the raidcheck automatically
 - Persistent storage in `data/raidcheck-store.json`
 
 ## Setup
@@ -16,6 +17,12 @@ A simple Discord bot for EverQuest-style raid checks. It lets you create a messa
 2. Copy `.env.example` to `.env` and fill in the values.
 3. Start the bot:
    `npm start`
+
+## MongoDB persistence
+
+Set `MONGODB_URI` to an Atlas connection string and optionally set `MONGODB_DB_NAME` (defaults to `eq_raidcheck`). The bot stores its complete state in the `bot_state` collection and restores it before connecting to Discord. If MongoDB is unavailable or not configured, local development falls back to `data/raidcheck-store.json`.
+
+For Render, add `MONGODB_URI` and `MONGODB_DB_NAME` under the service's Environment settings. Keep database credentials out of Git and allow the Render service to reach the Atlas cluster through Atlas Network Access.
 
 ## Commands
 
@@ -30,6 +37,8 @@ Afterward, `/raid` and `/raidcheck create` post there automatically.
 ### /raid
 
 Select a configured raid target and post its class checklist. Members click a class button to sign up; the post updates immediately with their display name and the remaining openings. Clicking the same class again, or clicking **Remove my role**, removes the signup.
+
+Each posted raidcheck remains open for one hour. Discord displays a live relative countdown, and the bot removes all signup controls when the deadline passes.
 
 Example:
 

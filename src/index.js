@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { MongoClient, ServerApiVersion } from 'mongodb';
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -21,6 +22,10 @@ import {
 const dataDir = join(process.cwd(), 'data');
 const storePath = join(dataDir, 'raidcheck-store.json');
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+let storeCache = null;
+let mongoClient = null;
+let mongoCollection = null;
+let pendingMongoWrite = Promise.resolve();
 
 const CHARACTER_CLASSES = [
   { name: 'Enchanter', abbreviation: 'ENC', category: 'Caster' },
@@ -56,6 +61,8 @@ const ROLE_TEMPLATES = {
 };
 
 const wizardSessions = new Map();
+const raidcheckTimers = new Map();
+const RAIDCHECK_DURATION_MS = 60 * 60 * 1000;
 
 const RAID_ENCOUNTERS = [
   'Phinigel Autropos',
@@ -271,7 +278,7 @@ function normalizeStoreData(store) {
   return store;
 }
 
-function loadStore() {
+function loadLocalStore() {
   ensureStore();
 
   try {
@@ -285,9 +292,60 @@ function loadStore() {
   }
 }
 
+async function initializeStore() {
+  const localStore = loadLocalStore();
+  storeCache = localStore;
+  if (!process.env.MONGODB_URI) {
+    console.warn('MONGODB_URI is not set; using local JSON storage.');
+    return;
+  }
+
+  try {
+    mongoClient = new MongoClient(process.env.MONGODB_URI, {
+      serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
+    });
+    await mongoClient.connect();
+    await mongoClient.db('admin').command({ ping: 1 });
+    mongoCollection = mongoClient
+      .db(process.env.MONGODB_DB_NAME || 'eq_raidcheck')
+      .collection('bot_state');
+    const document = await mongoCollection.findOne({ _id: 'store' });
+    if (document?.data) {
+      storeCache = normalizeStoreData(document.data);
+      writeFileSync(storePath, JSON.stringify(storeCache, null, 2));
+    } else {
+      await mongoCollection.replaceOne(
+        { _id: 'store' },
+        { _id: 'store', data: storeCache, updatedAt: new Date() },
+        { upsert: true }
+      );
+    }
+    console.log('Connected to MongoDB persistence.');
+  } catch (error) {
+    mongoCollection = null;
+    console.error('MongoDB connection failed; using local JSON storage.', error.message);
+  }
+}
+
+function loadStore() {
+  if (!storeCache) storeCache = loadLocalStore();
+  return storeCache;
+}
+
 function saveStore(store) {
   ensureStore();
-  writeFileSync(storePath, JSON.stringify(normalizeStoreData(store), null, 2));
+  storeCache = normalizeStoreData(store);
+  writeFileSync(storePath, JSON.stringify(storeCache, null, 2));
+  if (mongoCollection) {
+    const snapshot = structuredClone(storeCache);
+    pendingMongoWrite = pendingMongoWrite
+      .then(() => mongoCollection.replaceOne(
+        { _id: 'store' },
+        { _id: 'store', data: snapshot, updatedAt: new Date() },
+        { upsert: true }
+      ))
+      .catch((error) => console.error('Failed to save raidcheck state to MongoDB.', error.message));
+  }
 }
 
 function normalizeClaimEntry(entry) {
@@ -448,7 +506,7 @@ function buildComponents(requirements, claims = {}) {
   return rows;
 }
 
-function buildEmbed({ target, needs, claims = {} }) {
+function buildEmbed({ target, needs, claims = {}, expiresAt, expired = false }) {
   const requirements = parseNeeds(needs);
   const embed = new EmbedBuilder()
     .setTitle(`Raid Check: ${target}`)
@@ -456,7 +514,44 @@ function buildEmbed({ target, needs, claims = {} }) {
     .setColor('#00AEEF')
     .setTimestamp();
 
+  if (expiresAt) {
+    const timestamp = Math.floor(expiresAt / 1000);
+    embed.addFields({
+      name: expired ? 'Signup closed' : 'Signup closes',
+      value: expired ? `<t:${timestamp}:F>` : `<t:${timestamp}:R>`,
+      inline: false,
+    });
+    if (expired) embed.setColor('#747F8D');
+  }
+
   return { embed, requirements };
+}
+
+async function expireRaidcheck(messageId) {
+  raidcheckTimers.delete(messageId);
+  const store = loadStore();
+  const raidcheck = store.raidchecks[messageId];
+  if (!raidcheck || raidcheck.expired) return;
+  raidcheck.expired = true;
+  const { embed } = buildEmbed({ ...raidcheck, expired: true });
+  const channel = await client.channels.fetch(raidcheck.channelId).catch(() => null);
+  const message = channel?.isTextBased() ? await channel.messages.fetch(messageId).catch(() => null) : null;
+  if (message) await message.edit({ embeds: [embed], components: [] }).catch(() => null);
+  store.raidchecks[messageId] = raidcheck;
+  saveStore(store);
+}
+
+function scheduleRaidcheckExpiration(raidcheck) {
+  if (!raidcheck?.messageId || !raidcheck.expiresAt || raidcheck.expired) return;
+  const existingTimer = raidcheckTimers.get(raidcheck.messageId);
+  if (existingTimer) clearTimeout(existingTimer);
+  const delay = raidcheck.expiresAt - Date.now();
+  if (delay <= 0) {
+    void expireRaidcheck(raidcheck.messageId);
+    return;
+  }
+  const timer = setTimeout(() => void expireRaidcheck(raidcheck.messageId), delay);
+  raidcheckTimers.set(raidcheck.messageId, timer);
 }
 
 function presetKey(name) {
@@ -790,6 +885,10 @@ client.once('ready', async () => {
   }
 
   console.log(`Logged in as ${client.user.tag}`);
+
+  for (const raidcheck of Object.values(loadStore().raidchecks)) {
+    scheduleRaidcheckExpiration(raidcheck);
+  }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -871,7 +970,8 @@ client.on('interactionCreate', async (interaction) => {
       }
       const requirements = parseNeeds(parsed.needs);
       const claims = Object.fromEntries(Object.keys(requirements).map((role) => [role, []]));
-      const { embed } = buildEmbed({ target: targetName, needs: parsed.needs, claims });
+      const expiresAt = Date.now() + RAIDCHECK_DURATION_MS;
+      const { embed } = buildEmbed({ target: targetName, needs: parsed.needs, claims, expiresAt });
       const message = await channel.send({ embeds: [embed], components: buildComponents(requirements, claims) });
       store.raidchecks[message.id] = {
         messageId: message.id,
@@ -881,9 +981,12 @@ client.on('interactionCreate', async (interaction) => {
         timeframe: preset.timeframe ?? '',
         tag: preset.tag ?? 'None',
         windowHours: preset.windowHours,
+        expiresAt,
+        expired: false,
         claims,
       };
       saveStore(store);
+      scheduleRaidcheckExpiration(store.raidchecks[message.id]);
       await interaction.editReply({ content: `${targetName} was saved and posted in ${channel}.` });
       return;
     }
@@ -1190,7 +1293,8 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         const claims = Object.fromEntries(Object.keys(requirements).map((role) => [role, []]));
-        const { embed } = buildEmbed({ target, needs, timeframe, tag, claims, windowHours });
+        const expiresAt = Date.now() + RAIDCHECK_DURATION_MS;
+        const { embed } = buildEmbed({ target, needs, claims, expiresAt });
 
         const message = await channel.send({
           embeds: [embed],
@@ -1205,9 +1309,12 @@ client.on('interactionCreate', async (interaction) => {
           timeframe,
           tag,
           windowHours,
+          expiresAt,
+          expired: false,
           claims,
         };
         saveStore(store);
+        scheduleRaidcheckExpiration(store.raidchecks[message.id]);
 
         await interaction.editReply({ content: `Raid target posted in ${channel}. Message ID: ${message.id}` });
         return;
@@ -1456,6 +1563,11 @@ client.on('interactionCreate', async (interaction) => {
       const store = loadStore();
       const raidcheck = store.raidchecks[interaction.message.id];
       if (!raidcheck) return;
+      if (raidcheck.expired || (raidcheck.expiresAt && raidcheck.expiresAt <= Date.now())) {
+        await interaction.reply({ content: 'This raid check is closed.', flags: MessageFlags.Ephemeral });
+        await expireRaidcheck(interaction.message.id);
+        return;
+      }
 
       const requirements = parseNeeds(raidcheck.needs);
       const claimantId = interaction.user.id;
@@ -1474,6 +1586,7 @@ client.on('interactionCreate', async (interaction) => {
           tag: raidcheck.tag,
           claims: clearedClaims,
           windowHours: raidcheck.windowHours,
+          expiresAt: raidcheck.expiresAt,
         });
 
         raidcheck.claims = clearedClaims;
@@ -1522,6 +1635,7 @@ client.on('interactionCreate', async (interaction) => {
         tag: raidcheck.tag,
         claims: updatedClaims,
         windowHours: raidcheck.windowHours,
+        expiresAt: raidcheck.expiresAt,
       });
 
       raidcheck.claims = updatedClaims;
@@ -1544,4 +1658,16 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+async function shutdown(signal) {
+  console.log(`Received ${signal}; shutting down.`);
+  client.destroy();
+  await pendingMongoWrite.catch(() => {});
+  if (mongoClient) await mongoClient.close().catch(() => {});
+  process.exit(0);
+}
+
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));
+
+await initializeStore();
+await client.login(process.env.DISCORD_TOKEN);
