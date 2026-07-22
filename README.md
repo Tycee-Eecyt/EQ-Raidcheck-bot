@@ -4,9 +4,8 @@ A simple Discord bot for EverQuest-style raid checks. It lets you create a messa
 
 ## Features
 
-- Create a raid target with role requirements such as `Warrior:1,Cleric:3,Enchaner:1,Wizard:1`
-- Support optional `tag` values like `batphone` or `sockphone`
-- Editable timeframe and requirements for each target
+- Create a raid target with role requirements such as `Warrior:1,Cleric:3,Enchanter:1,Wizard:1`
+- Editable requirements for each target
 - Clickable role buttons that update the message in real time
 - Persistent storage in `data/raidcheck-store.json`
 
@@ -20,19 +19,49 @@ A simple Discord bot for EverQuest-style raid checks. It lets you create a messa
 
 ## Commands
 
-### /raidcheck create
+### /raidcheck channel
 
-Create a new raidcheck post.
+A member with the **Raid Leader** role (or Manage Channels permission) can tie raidcheck posts to a default text channel:
+
+`/raidcheck channel channel:#raid-check`
+
+Afterward, `/raid` and `/raidcheck create` post there automatically.
+
+### /raid
+
+Select a configured raid target and post its class checklist. Members click a class button to sign up; the post updates immediately with their display name and the remaining openings. Clicking the same class again, or clicking **Remove my role**, removes the signup.
 
 Example:
 
-`/raidcheck create target:"VS aka Venril sathir" needs:"Warrior:1,Cleric:3,Enchaner:1,Wizard:1" timeframe:"Tonight @ 8:00 PM" tag:"batphone" channel:#raid-check`
+`/raid target:"VS aka Venril sathir"`
+
+VS currently uses the same temporary composition as the encounter catalog. The VS Pop selection uses the `sockphone` tag.
+
+The built-in encounter catalog currently uses the temporary default `Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10`. DPS signups use individual Wizard, Rogue, and Monk buttons that share the DPS slot count. Each encounter preset can be edited independently as its final composition is decided.
+
+### /raidcheck create
+
+Run `/raidcheck create`, then type part of the mob name and select it from autocomplete. A single editor opens with the complete composition visible. Each line uses `Role | Eligible classes | Count`; save the form to update the preset and post its checklist.
+
+Example:
+
+For example: `DPS | Wizard, Rogue, Monk | 10`. Edit any role or count directly, delete a line, or add a new role such as `Tagger | Monk | 1`.
+
+Members signing up for a multi-class role receive one button per eligible class. The checklist records both their display name and selected class.
+
+Recognized classes and abbreviations are: Enchanter (`ENC`), Magician (`MAG`), Necromancer (`NEC`), Wizard (`WIZ`), Cleric (`CLR`), Druid (`DRU`), Shaman (`SHM`), Bard (`BRD`), Monk (`MNK`), Ranger (`RNG`), Rogue (`ROG`), Paladin (`PAL`), Shadow Knight (`SHD`), and Warrior (`WAR`). Abbreviations are expanded in the checklist, so `DPS(WIZ|ROG|MNK):10` displays Wizard, Rogue, and Monk.
 
 ### /raidcheck edit
 
-Update an existing raidcheck by message id.
+Run `/raidcheck edit` and search for the mob with autocomplete. Choose **Rename mob** for a dedicated name-only form, or **Edit roles/classes** for the composition editor. Renamed and updated presets remain available in `/raid` autocomplete.
 
-`/raidcheck edit message-id:123456789012345678 needs:"Warrior:0,Cleric:3,Enchaner:2,Wizard:1" timeframe:"Tonight @ 9:00 PM" tag:"sockphone"`
+### /raidcheck remove
+
+Search for a raid target and remove it after confirmation:
+
+`/raidcheck remove target:<mob name>`
+
+Only a Raid Leader or member with Manage Channels permission can remove targets. Existing posted raidchecks are left in place.
 
 ## Notes
 
