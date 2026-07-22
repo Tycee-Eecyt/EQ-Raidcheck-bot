@@ -37,7 +37,7 @@ Example:
 
 VS currently uses the same temporary composition as the encounter catalog. The VS Pop selection uses the `sockphone` tag.
 
-The built-in encounter catalog currently uses the temporary default `Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10`. DPS signups select their class from a dropdown. Each encounter preset can be edited independently as its final composition is decided.
+The built-in encounter catalog currently uses the temporary default `Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10`. DPS signups use individual Wizard, Rogue, and Monk buttons that share the DPS slot count. Each encounter preset can be edited independently as its final composition is decided.
 
 ### /raidcheck create
 
@@ -47,7 +47,7 @@ Example:
 
 For example: `DPS | Wizard, Rogue, Monk | 10`. Edit any role or count directly, delete a line, or add a new role such as `Tagger | Monk | 1`.
 
-Members signing up for a multi-class role receive a class dropdown. The checklist records both their display name and selected class.
+Members signing up for a multi-class role receive one button per eligible class. The checklist records both their display name and selected class.
 
 Recognized classes and abbreviations are: Enchanter (`ENC`), Magician (`MAG`), Necromancer (`NEC`), Wizard (`WIZ`), Cleric (`CLR`), Druid (`DRU`), Shaman (`SHM`), Bard (`BRD`), Monk (`MNK`), Ranger (`RNG`), Rogue (`ROG`), Paladin (`PAL`), Shadow Knight (`SHD`), and Warrior (`WAR`). Abbreviations are expanded in the checklist, so `DPS(WIZ|ROG|MNK):10` displays Wizard, Rogue, and Monk.
 

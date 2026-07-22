@@ -401,42 +401,38 @@ function formatRoleList(requirements, claims = {}) {
 function buildComponents(requirements, claims = {}) {
   const rows = [];
   const roles = Object.entries(requirements);
-  let buttonRow = new ActionRowBuilder();
 
   for (const [role, required] of roles) {
+    if (rows.length >= 4) break;
     const definition = parseRoleDefinition(role);
     const claimed = dedupeClaimsByUser(claims[role] ?? []);
     const remaining = Math.max(required - claimed.length, 0);
 
     if (definition.classes.length > 1) {
-      if (buttonRow.components.length) {
-        rows.push(buttonRow);
-        buttonRow = new ActionRowBuilder();
-      }
-      if (rows.length < 4) {
-        rows.push(new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`raidcheck-role-select:${encodeURIComponent(role)}`)
-            .setPlaceholder(`Sign up as ${definition.role} (${remaining}/${required} open)`)
-            .addOptions(definition.classes.slice(0, 25).map((className) => ({ label: className, value: className })))
-        ));
+      for (let index = 0; index < definition.classes.length && rows.length < 4; index += 5) {
+        const classRow = new ActionRowBuilder();
+        for (const className of definition.classes.slice(index, index + 5)) {
+          classRow.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`raidcheck-role-class:${encodeURIComponent(role)}:${encodeURIComponent(className)}`)
+              .setLabel(`${definition.role}: ${className}`)
+              .setStyle(remaining > 0 ? ButtonStyle.Success : ButtonStyle.Secondary)
+          );
+        }
+        rows.push(classRow);
       }
       continue;
     }
 
-    buttonRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`raidcheck-role:${encodeURIComponent(role)}`)
-        .setLabel(`${definition.role} (${remaining}/${required})`)
-        .setStyle(remaining > 0 ? ButtonStyle.Success : ButtonStyle.Secondary)
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`raidcheck-role:${encodeURIComponent(role)}`)
+          .setLabel(`${definition.role} (${remaining}/${required})`)
+          .setStyle(remaining > 0 ? ButtonStyle.Success : ButtonStyle.Secondary)
+      )
     );
-    if (buttonRow.components.length === 5) {
-      rows.push(buttonRow);
-      buttonRow = new ActionRowBuilder();
-    }
   }
-
-  if (buttonRow.components.length && rows.length < 4) rows.push(buttonRow);
 
   if (roles.length > 0 && rows.length < 5) {
     rows.push(
@@ -1491,21 +1487,26 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
-      const [type, encodedRole] = interaction.customId.split(':');
-      if (type !== 'raidcheck-role' && type !== 'raidcheck-role-select') return;
+      const [type, encodedRole, encodedClass] = interaction.customId.split(':');
+      if (type !== 'raidcheck-role' && type !== 'raidcheck-role-select' && type !== 'raidcheck-role-class') return;
 
       const role = decodeURIComponent(encodedRole);
       const definition = parseRoleDefinition(role);
-      const selectedClass = interaction.isStringSelectMenu()
-        ? interaction.values[0]
-        : (definition.classes.length === 1 ? definition.classes[0] : null);
+      const selectedClass = type === 'raidcheck-role-class'
+        ? decodeURIComponent(encodedClass)
+        : interaction.isStringSelectMenu()
+          ? interaction.values[0]
+          : (definition.classes.length === 1 ? definition.classes[0] : null);
       const claims = flattenClaims(raidcheck.claims ?? Object.fromEntries(Object.keys(requirements).map((key) => [key, []])));
       const roleClaims = dedupeClaimsByUser(claims[role] ?? []);
-      const userHasClaim = roleClaims.some((entry) => entry.id === claimantId);
+      const userRoleClaim = roleClaims.find((entry) => entry.id === claimantId);
 
-      let updatedClaims = removeClaimantFromAllRoles(claims, claimantId);
+      const targetRoleIsFull = roleClaims.length >= (requirements[role] ?? 0);
+      let updatedClaims = !userRoleClaim && targetRoleIsFull
+        ? claims
+        : removeClaimantFromAllRoles(claims, claimantId);
 
-      if (userHasClaim && interaction.isButton()) {
+      if (userRoleClaim && interaction.isButton() && (!selectedClass || userRoleClaim.className === selectedClass)) {
         updatedClaims = { ...updatedClaims, [role]: roleClaims.filter((entry) => entry.id !== claimantId) };
       } else if ((updatedClaims[role] ?? []).length < (requirements[role] ?? 0)) {
         updatedClaims = {
