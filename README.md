@@ -53,7 +53,7 @@ Recognized classes and abbreviations are: Enchanter (`ENC`), Magician (`MAG`), N
 
 ### /raidcheck edit
 
-Run `/raidcheck edit`, search for the mob with autocomplete, and edit the same prefilled composition. Updated presets remain available in `/raid` autocomplete.
+Run `/raidcheck edit` and search for the mob with autocomplete. Choose **Rename mob** for a dedicated name-only form, or **Edit roles/classes** for the composition editor. Renamed and updated presets remain available in `/raid` autocomplete.
 
 ### /raidcheck remove
 

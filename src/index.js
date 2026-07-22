@@ -752,6 +752,7 @@ function editorToRequirements(input) {
 
 function buildCompositionModal(mode, presetKeyValue, preset) {
   const sessionId = `${mode}:${presetKeyValue}`;
+  const compositionValue = requirementsToEditor(preset.needs).slice(0, 4000);
   return new ModalBuilder()
     .setCustomId(`raidcheck-composition:${sessionId}`.slice(0, 100))
     .setTitle(`${mode === 'create' ? 'Create' : 'Edit'}: ${preset.target}`.slice(0, 45))
@@ -762,10 +763,25 @@ function buildCompositionModal(mode, presetKeyValue, preset) {
           .setLabel('Role | Eligible classes | Count')
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
-          .setValue(requirementsToEditor(preset.needs).slice(0, 4000))
+          .setValue(compositionValue)
           .setPlaceholder('Tank | Warrior, Paladin, Shadow Knight | 2\nDPS | Wizard, Rogue, Monk | 10')
       )
     );
+}
+
+function buildRenameModal(presetKeyValue, preset) {
+  return new ModalBuilder()
+    .setCustomId(`raidcheck-rename:${presetKeyValue}`.slice(0, 100))
+    .setTitle(`Rename: ${preset.target}`.slice(0, 45))
+    .addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('newMobName')
+        .setLabel('Raid mob name')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(100)
+        .setValue(String(preset.target).slice(0, 100))
+    ));
 }
 
 client.once('ready', async () => {
@@ -790,6 +806,44 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith('raidcheck-edit-name:')) {
+      const key = interaction.customId.slice('raidcheck-edit-name:'.length);
+      const preset = resolvePreset(key, loadStore());
+      if (!preset) {
+        await interaction.reply({ content: 'That raid target no longer exists.', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.showModal(buildRenameModal(key, preset));
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('raidcheck-edit-composition:')) {
+      const key = interaction.customId.slice('raidcheck-edit-composition:'.length);
+      const preset = resolvePreset(key, loadStore());
+      if (!preset) {
+        await interaction.reply({ content: 'That raid target no longer exists.', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.showModal(buildCompositionModal('edit', key, preset));
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('raidcheck-rename:')) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const key = interaction.customId.slice('raidcheck-rename:'.length);
+      const store = loadStore();
+      const preset = resolvePreset(key, store);
+      const newName = interaction.fields.getTextInputValue('newMobName').trim();
+      if (!preset || !newName) {
+        await interaction.editReply({ content: 'The raid target no longer exists or the new name was empty.' });
+        return;
+      }
+      store.presets[key] = { ...preset, target: newName };
+      saveStore(store);
+      await interaction.editReply({ content: `Renamed the raid target to **${newName}**.` });
+      return;
+    }
+
     if (interaction.isModalSubmit() && interaction.customId.startsWith('raidcheck-composition:')) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const [, mode, key] = interaction.customId.split(':');
@@ -804,12 +858,13 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ content: parsed.error });
         return;
       }
-      const updatedPreset = { ...preset, needs: parsed.needs };
+      const targetName = preset.target;
+      const updatedPreset = { ...preset, target: targetName, needs: parsed.needs };
       store.presets[key] = updatedPreset;
 
       if (mode === 'edit') {
         saveStore(store);
-        await interaction.editReply({ content: `${preset.target} was updated and remains available under \`/raid\`.` });
+        await interaction.editReply({ content: `${targetName} was updated and remains available under \`/raid\`.` });
         return;
       }
 
@@ -820,12 +875,12 @@ client.on('interactionCreate', async (interaction) => {
       }
       const requirements = parseNeeds(parsed.needs);
       const claims = Object.fromEntries(Object.keys(requirements).map((role) => [role, []]));
-      const { embed } = buildEmbed({ target: preset.target, needs: parsed.needs, claims });
+      const { embed } = buildEmbed({ target: targetName, needs: parsed.needs, claims });
       const message = await channel.send({ embeds: [embed], components: buildComponents(requirements, claims) });
       store.raidchecks[message.id] = {
         messageId: message.id,
         channelId: channel.id,
-        target: preset.target,
+        target: targetName,
         needs: parsed.needs,
         timeframe: preset.timeframe ?? '',
         tag: preset.tag ?? 'None',
@@ -833,7 +888,7 @@ client.on('interactionCreate', async (interaction) => {
         claims,
       };
       saveStore(store);
-      await interaction.editReply({ content: `${preset.target} was saved and posted in ${channel}.` });
+      await interaction.editReply({ content: `${targetName} was saved and posted in ${channel}.` });
       return;
     }
 
@@ -1297,7 +1352,14 @@ client.on('interactionCreate', async (interaction) => {
           await interaction.reply({ content: 'Select a raid target preset from autocomplete.', flags: MessageFlags.Ephemeral });
           return;
         }
-        await interaction.showModal(buildCompositionModal('edit', key, selectedPreset));
+        await interaction.reply({
+          content: `What would you like to edit for **${selectedPreset.target}**?`,
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`raidcheck-edit-name:${key}`).setLabel('Rename mob').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`raidcheck-edit-composition:${key}`).setLabel('Edit roles/classes').setStyle(ButtonStyle.Secondary)
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
         return;
         if (!(await safeDeferReply(interaction, { flags: MessageFlags.Ephemeral }))) {
           return;
