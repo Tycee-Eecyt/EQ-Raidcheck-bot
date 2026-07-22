@@ -9,15 +9,53 @@ import {
   EmbedBuilder,
   GatewayIntentBits,
   MessageFlags,
+  ModalBuilder,
   REST,
   Routes,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } from 'discord.js';
 
 const dataDir = join(process.cwd(), 'data');
 const storePath = join(dataDir, 'raidcheck-store.json');
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+const CHARACTER_CLASSES = [
+  { name: 'Enchanter', abbreviation: 'ENC', category: 'Caster' },
+  { name: 'Magician', abbreviation: 'MAG', category: 'Caster' },
+  { name: 'Necromancer', abbreviation: 'NEC', category: 'Caster' },
+  { name: 'Wizard', abbreviation: 'WIZ', category: 'Caster' },
+  { name: 'Cleric', abbreviation: 'CLR', category: 'Priest' },
+  { name: 'Druid', abbreviation: 'DRU', category: 'Priest' },
+  { name: 'Shaman', abbreviation: 'SHM', category: 'Priest' },
+  { name: 'Bard', abbreviation: 'BRD', category: 'Melee' },
+  { name: 'Monk', abbreviation: 'MNK', category: 'Melee' },
+  { name: 'Ranger', abbreviation: 'RNG', category: 'Melee' },
+  { name: 'Rogue', abbreviation: 'ROG', category: 'Melee' },
+  { name: 'Paladin', abbreviation: 'PAL', category: 'Tank' },
+  { name: 'Shadow Knight', abbreviation: 'SHD', category: 'Tank' },
+  { name: 'Warrior', abbreviation: 'WAR', category: 'Tank' },
+];
+
+const CLASS_NAME_LOOKUP = new Map(
+  CHARACTER_CLASSES.flatMap((characterClass) => [
+    [characterClass.name.toLowerCase(), characterClass.name],
+    [characterClass.abbreviation.toLowerCase(), characterClass.name],
+  ])
+);
+
+const ROLE_TEMPLATES = {
+  Warrior: { label: 'Warrior', spec: 'Warrior' },
+  Cleric: { label: 'Cleric', spec: 'Cleric' },
+  Tank: { label: 'Tank', spec: 'Tank(Warrior|Paladin|Shadow Knight|Ranger)' },
+  Healer: { label: 'Healer', spec: 'Healer(Cleric|Druid|Shaman)' },
+  DPS: { label: 'DPS', spec: 'DPS(Wizard|Rogue|Monk)' },
+  Tagger: { label: 'Tagger', spec: 'Tagger(Monk)' },
+};
+
+const wizardSessions = new Map();
 
 const RAID_ENCOUNTERS = [
   'Phinigel Autropos',
@@ -99,7 +137,7 @@ const RAID_ENCOUNTERS = [
 const ENCOUNTER_PRESETS = Object.fromEntries(
   RAID_ENCOUNTERS.map((target) => [presetKey(target), {
     target,
-    needs: 'Warrior:1,Cleric:5,DPS:10',
+    needs: 'Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10',
     tag: 'batphone',
     windowHours: 16,
   }])
@@ -109,13 +147,13 @@ const DEFAULT_PRESETS = {
   ...ENCOUNTER_PRESETS,
   vs: {
     target: 'VS aka Venril sathir',
-    needs: 'Warrior:1,Cleric:5,DPS:10',
+    needs: 'Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10',
     tag: 'batphone',
     windowHours: 16,
   },
   'vs-pop': {
     target: 'VS aka Venril sathir',
-    needs: 'Warrior:1,Cleric:5,DPS:10',
+    needs: 'Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10',
     tag: 'sockphone',
     windowHours: 16,
   },
@@ -136,22 +174,13 @@ process.on('unhandledRejection', (error) => {
 const commands = [
   new SlashCommandBuilder()
     .setName('raid')
-    .setDescription('Create a raid target checklist post.')
-    .addSubcommand((subcommand) =>
-      subcommand
+    .setDescription('Post a raid checklist for a selected encounter.')
+    .addStringOption((option) =>
+      option
         .setName('target')
-        .setDescription('Create a raid target checklist using a preset target selection')
-        .addStringOption((option) =>
-          option
-            .setName('target')
-            .setDescription('Select the target preset')
-            .setRequired(true)
-            .setAutocomplete(true)
-        )
-        .addChannelOption((option) => option.setName('channel').setDescription('Override the configured raidcheck channel').setRequired(false))
-        .addIntegerOption((option) => option.setName('window-hours').setDescription('Window length from now in hours').setRequired(false))
-        .addStringOption((option) => option.setName('timeframe').setDescription('Optional descriptive window text').setRequired(false))
-        .addStringOption((option) => option.setName('tag').setDescription('Optional tag such as batphone or sockphone').setRequired(false))
+        .setDescription('Select the raid encounter')
+        .setRequired(true)
+        .setAutocomplete(true)
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -160,27 +189,14 @@ const commands = [
     .addSubcommand((subcommand) =>
       subcommand
         .setName('create')
-        .setDescription('Create a new raidcheck role request')
-        .addChannelOption((option) => option.setName('channel').setDescription('Override the configured raidcheck channel').setRequired(false))
-        .addStringOption((option) => option.setName('target').setDescription('Target name').setRequired(false))
-        .addStringOption((option) => option.setName('preset').setDescription('Use a saved target preset').setAutocomplete(true).setRequired(false))
-        .addStringOption((option) => option.setName('save-preset').setDescription('Save this target and role list as a reusable preset').setRequired(false))
-        .addStringOption((option) => option.setName('needs').setDescription('Role requirements like Warrior:1,Cleric:3').setRequired(false))
-        .addIntegerOption((option) => option.setName('window-hours').setDescription('Window length from now in hours').setRequired(false))
-        .addStringOption((option) => option.setName('timeframe').setDescription('Optional descriptive window text').setRequired(false))
-        .addStringOption((option) => option.setName('tag').setDescription('Optional tag such as batphone or sockphone').setRequired(false))
+        .setDescription('Open a form to create a raidcheck')
+        .addStringOption((option) => option.setName('target').setDescription('Search for the raid target').setRequired(true).setAutocomplete(true))
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName('edit')
-        .setDescription('Edit a posted raidcheck or saved target preset')
-        .addStringOption((option) => option.setName('message-id').setDescription('Message ID for a posted raidcheck').setRequired(false))
-        .addStringOption((option) => option.setName('preset').setDescription('Saved preset to edit instead').setAutocomplete(true).setRequired(false))
-        .addStringOption((option) => option.setName('target').setDescription('Updated target display name').setRequired(false))
-        .addStringOption((option) => option.setName('needs').setDescription('Updated role requirements').setRequired(false))
-        .addIntegerOption((option) => option.setName('window-hours').setDescription('Updated window length in hours').setRequired(false))
-        .addStringOption((option) => option.setName('timeframe').setDescription('Updated descriptive timeframe').setRequired(false))
-        .addStringOption((option) => option.setName('tag').setDescription('Updated tag').setRequired(false))
+        .setDescription('Open a form to edit a raidcheck or preset')
+        .addStringOption((option) => option.setName('target').setDescription('Search for the raid target preset').setRequired(true).setAutocomplete(true))
     )
     .addSubcommand((subcommand) =>
       subcommand
@@ -188,13 +204,19 @@ const commands = [
         .setDescription('Set the default text channel for raidcheck posts')
         .addChannelOption((option) => option.setName('channel').setDescription('Default raidcheck text channel').setRequired(true))
     )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('remove')
+        .setDescription('Remove a raid target preset')
+        .addStringOption((option) => option.setName('target').setDescription('Search for the raid target to remove').setRequired(true).setAutocomplete(true))
+    )
     .toJSON(),
 ];
 
 function ensureStore() {
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   if (!existsSync(storePath)) {
-    writeFileSync(storePath, JSON.stringify({ raidchecks: {}, presets: {}, guildSettings: {} }, null, 2));
+    writeFileSync(storePath, JSON.stringify({ raidchecks: {}, presets: {}, guildSettings: {}, disabledPresets: {} }, null, 2));
   }
 }
 
@@ -223,6 +245,7 @@ function normalizeStoreData(store) {
   const raidchecks = store.raidchecks ?? {};
   store.presets ??= {};
   store.guildSettings ??= {};
+  store.disabledPresets ??= {};
 
   for (const preset of Object.values(store.presets)) {
     preset.needs = normalizeRoleSpec(preset.needs);
@@ -256,7 +279,7 @@ function loadStore() {
     return normalizeStoreData(store);
   } catch (error) {
     console.error('Raidcheck store was corrupted. Resetting the local store file.', error);
-    const resetStore = { raidchecks: {}, presets: {}, guildSettings: {} };
+    const resetStore = { raidchecks: {}, presets: {}, guildSettings: {}, disabledPresets: {} };
     writeFileSync(storePath, JSON.stringify(resetStore, null, 2));
     return normalizeStoreData(resetStore);
   }
@@ -349,24 +372,16 @@ function parseNeeds(input) {
     }, {});
 }
 
-function renderWindow({ timeframe, windowHours }) {
-  if (timeframe && timeframe.trim()) {
-    return timeframe.trim();
-  }
-
-  if (Number.isInteger(windowHours) && windowHours > 0) {
-    return `Now → +${windowHours} hours`;
-  }
-
-  return 'Open window';
-}
-
 function parseRoleDefinition(roleSpec) {
   const match = roleSpec.match(/^(.+?)\((.+)\)$/);
   if (!match) return { role: roleSpec, classes: [] };
   return {
     role: match[1].trim(),
-    classes: match[2].split('|').map((name) => name.trim()).filter(Boolean),
+    classes: match[2]
+      .split('|')
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .map((name) => CLASS_NAME_LOOKUP.get(name.toLowerCase()) || name),
   };
 }
 
@@ -437,11 +452,10 @@ function buildComponents(requirements, claims = {}) {
   return rows;
 }
 
-function buildEmbed({ target, needs, timeframe, tag, claims = {}, windowHours }) {
+function buildEmbed({ target, needs, claims = {} }) {
   const requirements = parseNeeds(needs);
   const embed = new EmbedBuilder()
     .setTitle(`Raid Check: ${target}`)
-    .setDescription(`Tag: ${tag || 'None'}\nWindow: ${renderWindow({ timeframe, windowHours })}`)
     .addFields({ name: 'Requirements', value: formatRoleList(requirements, claims) || 'No roles listed', inline: false })
     .setColor('#00AEEF')
     .setTimestamp();
@@ -454,7 +468,9 @@ function presetKey(name) {
 }
 
 function allPresets(store) {
-  return { ...DEFAULT_PRESETS, ...(store?.presets ?? {}) };
+  const presets = { ...DEFAULT_PRESETS, ...(store?.presets ?? {}) };
+  for (const key of Object.keys(store?.disabledPresets ?? {})) delete presets[key];
+  return presets;
 }
 
 function resolvePreset(preset, store = null) {
@@ -502,6 +518,256 @@ function removeClaimantFromAllRoles(claims = {}, claimantId) {
   );
 }
 
+function textInput(customId, label, { required = false, placeholder = '', style = TextInputStyle.Short } = {}) {
+  const input = new TextInputBuilder().setCustomId(customId).setLabel(label).setStyle(style).setRequired(required);
+  if (placeholder) input.setPlaceholder(placeholder);
+  return new ActionRowBuilder().addComponents(input);
+}
+
+function buildCreateModal() {
+  return new ModalBuilder()
+    .setCustomId('raidcheck-create-modal')
+    .setTitle('Create Raid Check')
+    .addComponents(
+      textInput('preset', 'Existing preset key (optional)', { placeholder: 'vindi' }),
+      textInput('target', 'Target name (optional with preset)', { placeholder: 'Derakor the Vindicator' }),
+      textInput('needs', 'Roles / classes (optional with preset)', {
+        placeholder: 'Warrior:1,Cleric:5,DPS(WIZ|ROG|MNK):10',
+        style: TextInputStyle.Paragraph,
+      }),
+      textInput('savePreset', 'Save as preset key (optional)', { placeholder: 'vindi' })
+    );
+}
+
+function buildEditModal() {
+  return new ModalBuilder()
+    .setCustomId('raidcheck-edit-modal')
+    .setTitle('Edit Raid Check')
+    .addComponents(
+      textInput('identifier', 'Preset key or message ID', { required: true, placeholder: 'vindi or 123456789012345678' }),
+      textInput('target', 'New target name (optional)'),
+      textInput('needs', 'New roles / classes (optional)', {
+        placeholder: 'Warrior:1,Cleric:5,DPS(WIZ|ROG|MNK):10',
+        style: TextInputStyle.Paragraph,
+      })
+    );
+}
+
+function wizardKey(interaction) {
+  return `${interaction.guildId}:${interaction.user.id}`;
+}
+
+function wizardSources(store, guildId, mode) {
+  const presets = Object.entries(allPresets(store)).map(([key, preset]) => ({
+    label: preset.target,
+    description: `Preset: ${key}`,
+    value: `preset:${key}`,
+    target: preset.target,
+    needs: preset.needs,
+  }));
+  if (mode === 'create') return presets;
+  const posts = Object.values(store.raidchecks)
+    .filter((raidcheck) => !guildId || client.channels.cache.get(raidcheck.channelId)?.guildId === guildId)
+    .map((raidcheck) => ({
+      label: raidcheck.target,
+      description: `Posted message: ${raidcheck.messageId}`,
+      value: `post:${raidcheck.messageId}`,
+      target: raidcheck.target,
+      needs: raidcheck.needs,
+    }));
+  return [...posts, ...presets];
+}
+
+function sourcePickerComponents(session) {
+  const pageCount = Math.max(Math.ceil(session.sources.length / 25), 1);
+  session.page = Math.min(Math.max(session.page, 0), pageCount - 1);
+  const options = session.sources.slice(session.page * 25, session.page * 25 + 25).map((source) => ({
+    label: source.label.slice(0, 100),
+    description: source.description.slice(0, 100),
+    value: source.value,
+  }));
+  const rows = [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('wizard-source')
+      .setPlaceholder('Select a raid encounter or saved post')
+      .addOptions(options)
+  )];
+  if (pageCount > 1) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('wizard-prev').setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(session.page === 0),
+      new ButtonBuilder().setCustomId('wizard-next').setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(session.page === pageCount - 1)
+    ));
+  }
+  return rows;
+}
+
+function selectedTemplateCounts(needs) {
+  const requirements = parseNeeds(needs);
+  const counts = {};
+  for (const [roleSpec, count] of Object.entries(requirements)) {
+    const roleName = parseRoleDefinition(roleSpec).role;
+    if (ROLE_TEMPLATES[roleName]) counts[roleName] = count;
+  }
+  return counts;
+}
+
+function selectedTemplateClasses(needs) {
+  const classes = {};
+  for (const roleSpec of Object.keys(parseNeeds(needs))) {
+    const definition = parseRoleDefinition(roleSpec);
+    if (!ROLE_TEMPLATES[definition.role]) continue;
+    classes[definition.role] = definition.classes.length
+      ? definition.classes
+      : (CLASS_NAME_LOOKUP.has(definition.role.toLowerCase()) ? [CLASS_NAME_LOOKUP.get(definition.role.toLowerCase())] : []);
+  }
+  return classes;
+}
+
+function rolePickerComponents(session) {
+  const selected = new Set(Object.keys(session.counts));
+  return [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('wizard-roles')
+        .setPlaceholder('Select up to four required roles')
+        .setMinValues(1)
+        .setMaxValues(4)
+        .addOptions(Object.entries(ROLE_TEMPLATES).map(([value, template]) => ({
+          label: template.label,
+          description: parseRoleDefinition(template.spec).classes.join(', ').slice(0, 100) || `${template.label} only`,
+          value,
+          default: selected.has(value),
+        })))
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('wizard-to-classes')
+        .setLabel('Continue to classes')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(selected.size === 0)
+    ),
+  ];
+}
+
+function classPickerComponents(session) {
+  const rows = Object.keys(session.counts).slice(0, 4).map((role) => {
+    const selected = new Set(session.classes[role] ?? []);
+    return new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`wizard-classes:${role}`)
+        .setPlaceholder(`${role}: select eligible classes`)
+        .setMinValues(1)
+        .setMaxValues(CHARACTER_CLASSES.length)
+        .addOptions(CHARACTER_CLASSES.map((characterClass) => ({
+          label: characterClass.name,
+          description: `${characterClass.category} • ${characterClass.abbreviation}`,
+          value: characterClass.name,
+          default: selected.has(characterClass.name),
+        })))
+    );
+  });
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('wizard-back-roles').setLabel('Change roles').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('wizard-to-counts').setLabel('Set counts').setStyle(ButtonStyle.Primary)
+  ));
+  return rows;
+}
+
+function classPickerContent(session) {
+  const roleList = Object.keys(session.counts)
+    .slice(0, 4)
+    .map((role, index) => `**${index + 1}. ${role}**`)
+    .join('\n');
+  return `**${session.target}**\nChoose which classes can fill each role. The dropdowns follow this order:\n${roleList}`;
+}
+
+function countPickerComponents(session) {
+  const rows = Object.entries(session.counts).slice(0, 4).map(([role, selectedCount]) =>
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`wizard-count:${role}`)
+        .setPlaceholder(`${role} required: ${selectedCount}`)
+        .addOptions(Array.from({ length: 20 }, (_, index) => ({
+          label: `${index + 1} ${role}`,
+          value: String(index + 1),
+          default: selectedCount === index + 1,
+        })))
+    )
+  );
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('wizard-back-roles').setLabel('Change roles').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('wizard-back-classes').setLabel('Edit classes').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('wizard-confirm').setLabel(session.mode === 'create' ? 'Save & Post' : 'Save Changes').setStyle(ButtonStyle.Success)
+  ));
+  return rows;
+}
+
+function wizardNeeds(session) {
+  return Object.entries(session.counts)
+    .map(([role, count]) => {
+      const classes = session.classes[role] ?? [];
+      const plainClassRole = classes.length === 1 && classes[0] === role;
+      return `${plainClassRole ? role : `${role}(${classes.join('|')})`}:${count}`;
+    })
+    .join(',');
+}
+
+async function startRaidcheckWizard(interaction, mode) {
+  const store = loadStore();
+  const session = { mode, page: 0, sources: wizardSources(store, interaction.guildId, mode), counts: {}, classes: {} };
+  wizardSessions.set(wizardKey(interaction), session);
+  await interaction.reply({
+    content: mode === 'create' ? '**Create Raid Check**\nSelect an encounter.' : '**Edit Raid Check**\nSelect a saved preset or posted raidcheck.',
+    components: sourcePickerComponents(session),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+function requirementsToEditor(needs) {
+  return Object.entries(parseNeeds(needs)).map(([roleSpec, count]) => {
+    const definition = parseRoleDefinition(roleSpec);
+    const classes = definition.classes.length ? definition.classes : [definition.role];
+    return `${definition.role} | ${classes.join(', ')} | ${count}`;
+  }).join('\n');
+}
+
+function editorToRequirements(input) {
+  const lines = input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const requirements = [];
+  for (const line of lines) {
+    const [roleInput, classesInput, countInput, ...extra] = line.split('|').map((part) => part.trim());
+    const count = Number(countInput);
+    if (!roleInput || !classesInput || extra.length || !Number.isInteger(count) || count < 1) {
+      return { error: `Invalid line: \`${line}\`. Use \`Role | Class, Class | Count\`.` };
+    }
+    const classes = classesInput.split(',').map((name) => name.trim()).filter(Boolean)
+      .map((name) => CLASS_NAME_LOOKUP.get(name.toLowerCase()) || name);
+    if (!classes.length) return { error: `List at least one class for \`${roleInput}\`.` };
+    const plainClassRole = classes.length === 1 && classes[0].toLowerCase() === roleInput.toLowerCase();
+    requirements.push(`${plainClassRole ? classes[0] : `${roleInput}(${classes.join('|')})`}:${count}`);
+  }
+  if (!requirements.length) return { error: 'Add at least one role.' };
+  return { needs: requirements.join(',') };
+}
+
+function buildCompositionModal(mode, presetKeyValue, preset) {
+  const sessionId = `${mode}:${presetKeyValue}`;
+  return new ModalBuilder()
+    .setCustomId(`raidcheck-composition:${sessionId}`.slice(0, 100))
+    .setTitle(`${mode === 'create' ? 'Create' : 'Edit'}: ${preset.target}`.slice(0, 45))
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('composition')
+          .setLabel('Role | Eligible classes | Count')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setValue(requirementsToEditor(preset.needs).slice(0, 4000))
+          .setPlaceholder('Tank | Warrior, Paladin, Shadow Knight | 2\nDPS | Wizard, Rogue, Monk | 10')
+      )
+    );
+}
+
 client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
@@ -524,26 +790,337 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('raidcheck-composition:')) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const [, mode, key] = interaction.customId.split(':');
+      const store = loadStore();
+      const preset = resolvePreset(key, store);
+      if (!preset) {
+        await interaction.editReply({ content: 'That raid target preset no longer exists.' });
+        return;
+      }
+      const parsed = editorToRequirements(interaction.fields.getTextInputValue('composition'));
+      if (parsed.error) {
+        await interaction.editReply({ content: parsed.error });
+        return;
+      }
+      const updatedPreset = { ...preset, needs: parsed.needs };
+      store.presets[key] = updatedPreset;
+
+      if (mode === 'edit') {
+        saveStore(store);
+        await interaction.editReply({ content: `${preset.target} was updated and remains available under \`/raid\`.` });
+        return;
+      }
+
+      const channel = await resolveRaidcheckChannel(interaction, null, store);
+      if (!isUsableTextChannel(channel)) {
+        await interaction.editReply({ content: 'A Raid Leader must first set the posting channel with `/raidcheck channel`.' });
+        return;
+      }
+      const requirements = parseNeeds(parsed.needs);
+      const claims = Object.fromEntries(Object.keys(requirements).map((role) => [role, []]));
+      const { embed } = buildEmbed({ target: preset.target, needs: parsed.needs, claims });
+      const message = await channel.send({ embeds: [embed], components: buildComponents(requirements, claims) });
+      store.raidchecks[message.id] = {
+        messageId: message.id,
+        channelId: channel.id,
+        target: preset.target,
+        needs: parsed.needs,
+        timeframe: preset.timeframe ?? '',
+        tag: preset.tag ?? 'None',
+        windowHours: preset.windowHours,
+        claims,
+      };
+      saveStore(store);
+      await interaction.editReply({ content: `${preset.target} was saved and posted in ${channel}.` });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('raidcheck-target-remove:')) {
+      if (!canConfigureRaidcheck(interaction)) {
+        await interaction.reply({ content: 'Only a Raid Leader or member with Manage Channels permission can remove targets.', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const key = interaction.customId.slice('raidcheck-target-remove:'.length);
+      const store = loadStore();
+      const preset = resolvePreset(key, store);
+      if (!preset) {
+        await interaction.update({ content: 'That raid target has already been removed.', components: [] });
+        return;
+      }
+      delete store.presets[key];
+      store.disabledPresets[key] = true;
+      saveStore(store);
+      await interaction.update({ content: `Removed raid target **${preset.target}**. Existing posted raidchecks were not deleted.`, components: [] });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId === 'raidcheck-target-remove-cancel') {
+      await interaction.update({ content: 'Raid target removal cancelled.', components: [] });
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'raidcheck-create-modal') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const store = loadStore();
+      const presetInput = interaction.fields.getTextInputValue('preset').trim();
+      const targetInput = interaction.fields.getTextInputValue('target').trim();
+      const needsInput = interaction.fields.getTextInputValue('needs').trim();
+      const savePresetInput = interaction.fields.getTextInputValue('savePreset').trim();
+      const preset = resolvePreset(presetInput, store);
+      const target = targetInput || preset?.target;
+      const needs = needsInput || preset?.needs;
+      const timeframe = preset?.timeframe ?? '';
+      const tag = preset?.tag || 'None';
+      const windowHours = preset?.windowHours;
+      const channel = await resolveRaidcheckChannel(interaction, null, store);
+      const requirements = parseNeeds(needs);
+
+      if (!target || !hasValidRequirements(requirements)) {
+        await interaction.editReply({ content: 'Enter a valid preset, or provide a target and requirements such as `Warrior:1,Cleric:5,DPS(WIZ|ROG|MNK):10`.' });
+        return;
+      }
+      if (!isUsableTextChannel(channel)) {
+        await interaction.editReply({ content: 'A Raid Leader must first set the posting channel with `/raidcheck channel`.' });
+        return;
+      }
+
+      if (savePresetInput) {
+        const key = presetKey(savePresetInput);
+        if (!key) {
+          await interaction.editReply({ content: 'The preset key must contain at least one letter or number.' });
+          return;
+        }
+        store.presets[key] = { target, needs: normalizeRoleSpec(needs), timeframe, tag, windowHours };
+      }
+
+      const claims = Object.fromEntries(Object.keys(requirements).map((role) => [role, []]));
+      const { embed } = buildEmbed({ target, needs, claims });
+      const message = await channel.send({ embeds: [embed], components: buildComponents(requirements, claims) });
+      store.raidchecks[message.id] = { messageId: message.id, channelId: channel.id, target, needs, timeframe, tag, windowHours, claims };
+      saveStore(store);
+      await interaction.editReply({ content: `Raidcheck posted in ${channel}.${savePresetInput ? ` Preset \`${presetKey(savePresetInput)}\` was saved.` : ''}` });
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'raidcheck-edit-modal') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const store = loadStore();
+      const identifier = interaction.fields.getTextInputValue('identifier').trim();
+      const targetInput = interaction.fields.getTextInputValue('target').trim();
+      const needsInput = interaction.fields.getTextInputValue('needs').trim();
+      const raidcheck = store.raidchecks[identifier];
+
+      if (raidcheck) {
+        const updated = {
+          ...raidcheck,
+          target: targetInput || raidcheck.target,
+          needs: needsInput ? normalizeRoleSpec(needsInput) : raidcheck.needs,
+        };
+        const requirements = parseNeeds(updated.needs);
+        if (!updated.target || !hasValidRequirements(requirements)) {
+          await interaction.editReply({ content: 'Enter valid requirements such as `Warrior:1,Cleric:5,DPS(WIZ|ROG|MNK):10`.' });
+          return;
+        }
+        const claims = flattenClaims(updated.claims);
+        const { embed } = buildEmbed({ target: updated.target, needs: updated.needs, claims });
+        const channel = await client.channels.fetch(updated.channelId).catch(() => null);
+        const message = channel?.isTextBased() ? await channel.messages.fetch(identifier).catch(() => null) : null;
+        if (!message) {
+          await interaction.editReply({ content: 'The stored raidcheck message could not be found.' });
+          return;
+        }
+        await message.edit({ embeds: [embed], components: buildComponents(requirements, claims) });
+        updated.claims = claims;
+        store.raidchecks[identifier] = updated;
+        saveStore(store);
+        await interaction.editReply({ content: `Raidcheck ${identifier} updated.` });
+        return;
+      }
+
+      const key = presetKey(identifier);
+      const preset = resolvePreset(key, store);
+      if (!preset) {
+        await interaction.editReply({ content: 'No posted raidcheck or saved preset was found for that value.' });
+        return;
+      }
+      const updatedPreset = {
+        ...preset,
+        target: targetInput || preset.target,
+        needs: needsInput ? normalizeRoleSpec(needsInput) : preset.needs,
+      };
+      if (!updatedPreset.target || !hasValidRequirements(parseNeeds(updatedPreset.needs))) {
+        await interaction.editReply({ content: 'Enter valid requirements such as `Warrior:1,Cleric:5,DPS(WIZ|ROG|MNK):10`.' });
+        return;
+      }
+      store.presets[key] = updatedPreset;
+      saveStore(store);
+      await interaction.editReply({ content: `Preset \`${key}\` updated.` });
+      return;
+    }
+
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('wizard-')) {
+      const session = wizardSessions.get(wizardKey(interaction));
+      if (!session) {
+        await interaction.reply({ content: 'This wizard expired. Run the command again.', flags: MessageFlags.Ephemeral });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-prev' || interaction.customId === 'wizard-next') {
+        session.page += interaction.customId === 'wizard-next' ? 1 : -1;
+        await interaction.update({ components: sourcePickerComponents(session) });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-source' && interaction.isStringSelectMenu()) {
+        const source = session.sources.find((entry) => entry.value === interaction.values[0]);
+        if (!source) return;
+        session.sourceValue = source.value;
+        session.target = source.target;
+        session.counts = selectedTemplateCounts(source.needs);
+        session.classes = selectedTemplateClasses(source.needs);
+        await interaction.update({
+          content: `**${session.mode === 'create' ? 'Create' : 'Edit'} Raid Check: ${session.target}**\nSelect the roles required for this encounter.`,
+          components: rolePickerComponents(session),
+        });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-roles' && interaction.isStringSelectMenu()) {
+        session.counts = Object.fromEntries(interaction.values.map((role) => [role, session.counts[role] || 1]));
+        session.classes = Object.fromEntries(interaction.values.map((role) => [
+          role,
+          session.classes[role] ?? parseRoleDefinition(ROLE_TEMPLATES[role].spec).classes
+            .concat(parseRoleDefinition(ROLE_TEMPLATES[role].spec).classes.length ? [] : [role]),
+        ]));
+        await interaction.update({
+          content: `**${session.target}**\nSelect the roles required for this encounter, then press Continue.`,
+          components: rolePickerComponents(session),
+        });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-to-classes') {
+        await interaction.update({
+          content: classPickerContent(session),
+          components: classPickerComponents(session),
+        });
+        return;
+      }
+
+      if (interaction.customId.startsWith('wizard-classes:') && interaction.isStringSelectMenu()) {
+        const role = interaction.customId.slice('wizard-classes:'.length);
+        session.classes[role] = [...interaction.values];
+        await interaction.update({ components: classPickerComponents(session) });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-to-counts') {
+        await interaction.update({
+          content: `**${session.target}**\nChoose how many players are required for each role.`,
+          components: countPickerComponents(session),
+        });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-back-roles') {
+        await interaction.update({
+          content: `**${session.target}**\nSelect the roles required for this encounter.`,
+          components: rolePickerComponents(session),
+        });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-back-classes') {
+        await interaction.update({
+          content: classPickerContent(session),
+          components: classPickerComponents(session),
+        });
+        return;
+      }
+
+      if (interaction.customId.startsWith('wizard-count:') && interaction.isStringSelectMenu()) {
+        const role = interaction.customId.slice('wizard-count:'.length);
+        session.counts[role] = Number(interaction.values[0]);
+        await interaction.update({ components: countPickerComponents(session) });
+        return;
+      }
+
+      if (interaction.customId === 'wizard-confirm') {
+        await interaction.deferUpdate();
+        const store = loadStore();
+        const needs = wizardNeeds(session);
+        const requirements = parseNeeds(needs);
+        const [sourceType, sourceId] = session.sourceValue.split(':');
+
+        if (session.mode === 'create') {
+          const channel = await resolveRaidcheckChannel(interaction, null, store);
+          if (!isUsableTextChannel(channel)) {
+            await interaction.editReply({ content: 'A Raid Leader must first set the posting channel with `/raidcheck channel`.', components: [] });
+            return;
+          }
+          const originalPreset = resolvePreset(sourceId, store) ?? {};
+          store.presets[sourceId] = { ...originalPreset, target: session.target, needs };
+          const claims = Object.fromEntries(Object.keys(requirements).map((role) => [role, []]));
+          const { embed } = buildEmbed({ target: session.target, needs, claims });
+          const message = await channel.send({ embeds: [embed], components: buildComponents(requirements, claims) });
+          store.raidchecks[message.id] = {
+            messageId: message.id,
+            channelId: channel.id,
+            target: session.target,
+            needs,
+            timeframe: originalPreset.timeframe ?? '',
+            tag: originalPreset.tag ?? 'None',
+            windowHours: originalPreset.windowHours,
+            claims,
+          };
+          saveStore(store);
+          wizardSessions.delete(wizardKey(interaction));
+          await interaction.editReply({ content: `Raidcheck saved and posted in ${channel}.`, components: [] });
+          return;
+        }
+
+        if (sourceType === 'preset') {
+          const originalPreset = resolvePreset(sourceId, store) ?? {};
+          store.presets[sourceId] = { ...originalPreset, target: session.target, needs };
+          saveStore(store);
+        } else {
+          const raidcheck = store.raidchecks[sourceId];
+          const claims = flattenClaims(raidcheck.claims);
+          raidcheck.needs = needs;
+          raidcheck.claims = claims;
+          const channel = await client.channels.fetch(raidcheck.channelId).catch(() => null);
+          const message = channel?.isTextBased() ? await channel.messages.fetch(sourceId).catch(() => null) : null;
+          if (!message) {
+            await interaction.editReply({ content: 'The posted raidcheck message could not be found.', components: [] });
+            return;
+          }
+          const { embed } = buildEmbed({ target: raidcheck.target, needs, claims });
+          await message.edit({ embeds: [embed], components: buildComponents(requirements, claims) });
+          saveStore(store);
+        }
+        wizardSessions.delete(wizardKey(interaction));
+        await interaction.editReply({ content: `${session.target} was updated.`, components: [] });
+        return;
+      }
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === 'raid') {
-      if (interaction.options.getSubcommand() === 'target') {
         if (!(await safeDeferReply(interaction, { flags: MessageFlags.Ephemeral }))) {
           return;
         }
 
-        const requestedChannel = interaction.options.getChannel('channel');
         const targetChoice = interaction.options.getString('target');
-        const timeframeInput = interaction.options.getString('timeframe');
-        const tagInput = interaction.options.getString('tag');
-        const windowHoursInput = interaction.options.getInteger('window-hours');
 
         const store = loadStore();
-        const channel = await resolveRaidcheckChannel(interaction, requestedChannel, store);
+        const channel = await resolveRaidcheckChannel(interaction, null, store);
         const preset = resolvePreset(targetChoice, store);
         const target = preset?.target;
         const needs = preset?.needs;
-        const timeframe = timeframeInput || (preset?.timeframe ?? '');
-        const tag = tagInput || preset?.tag || 'None';
-        const windowHours = windowHoursInput ?? preset?.windowHours;
+        const timeframe = preset?.timeframe ?? '';
+        const tag = preset?.tag || 'None';
+        const windowHours = preset?.windowHours;
 
         if (!target || !needs) {
           await interaction.editReply({ content: 'Choose a supported raid target such as `vs` or `vs-pop`.' });
@@ -552,7 +1129,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const requirements = parseNeeds(needs);
         if (!isUsableTextChannel(channel)) {
-          await interaction.editReply({ content: 'Choose a server text channel where I can post the checklist.' });
+          await interaction.editReply({ content: 'A Raid Leader must first set the posting channel with `/raidcheck channel`.' });
           return;
         }
 
@@ -583,10 +1160,31 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.editReply({ content: `Raid target posted in ${channel}. Message ID: ${message.id}` });
         return;
-      }
     }
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'raidcheck') {
+      if (interaction.options.getSubcommand() === 'remove') {
+        if (!canConfigureRaidcheck(interaction)) {
+          await interaction.reply({ content: 'Only a Raid Leader or member with Manage Channels permission can remove targets.', flags: MessageFlags.Ephemeral });
+          return;
+        }
+        const key = presetKey(interaction.options.getString('target'));
+        const preset = resolvePreset(key, loadStore());
+        if (!preset) {
+          await interaction.reply({ content: 'Select an existing raid target from autocomplete.', flags: MessageFlags.Ephemeral });
+          return;
+        }
+        await interaction.reply({
+          content: `Remove **${preset.target}** from the raid target list? Existing posted raidchecks will remain.`,
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`raidcheck-target-remove:${key}`).setLabel('Remove target').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('raidcheck-target-remove-cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+          )],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       if (interaction.options.getSubcommand() === 'channel') {
         if (!(await safeDeferReply(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
@@ -612,6 +1210,14 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (interaction.options.getSubcommand() === 'create') {
+        const key = presetKey(interaction.options.getString('target'));
+        const selectedPreset = resolvePreset(key, loadStore());
+        if (!selectedPreset) {
+          await interaction.reply({ content: 'Select a raid target from autocomplete.', flags: MessageFlags.Ephemeral });
+          return;
+        }
+        await interaction.showModal(buildCompositionModal('create', key, selectedPreset));
+        return;
         if (!(await safeDeferReply(interaction, { flags: MessageFlags.Ephemeral }))) {
           return;
         }
@@ -685,6 +1291,14 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (interaction.options.getSubcommand() === 'edit') {
+        const key = presetKey(interaction.options.getString('target'));
+        const selectedPreset = resolvePreset(key, loadStore());
+        if (!selectedPreset) {
+          await interaction.reply({ content: 'Select a raid target preset from autocomplete.', flags: MessageFlags.Ephemeral });
+          return;
+        }
+        await interaction.showModal(buildCompositionModal('edit', key, selectedPreset));
+        return;
         if (!(await safeDeferReply(interaction, { flags: MessageFlags.Ephemeral }))) {
           return;
         }

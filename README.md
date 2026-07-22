@@ -5,8 +5,7 @@ A simple Discord bot for EverQuest-style raid checks. It lets you create a messa
 ## Features
 
 - Create a raid target with role requirements such as `Warrior:1,Cleric:3,Enchanter:1,Wizard:1`
-- Support optional `tag` values like `batphone` or `sockphone`
-- Editable timeframe and requirements for each target
+- Editable requirements for each target
 - Clickable role buttons that update the message in real time
 - Persistent storage in `data/raidcheck-store.json`
 
@@ -26,47 +25,43 @@ A member with the **Raid Leader** role (or Manage Channels permission) can tie r
 
 `/raidcheck channel channel:#raid-check`
 
-Afterward, `/raid target` and `/raidcheck create` post there automatically. Their optional `channel` argument can override the configured channel for one post.
+Afterward, `/raid` and `/raidcheck create` post there automatically.
 
-### /raid target
+### /raid
 
 Select a configured raid target and post its class checklist. Members click a class button to sign up; the post updates immediately with their display name and the remaining openings. Clicking the same class again, or clicking **Remove my role**, removes the signup.
 
 Example:
 
-`/raid target target:"VS aka Venril sathir" channel:#raid-check`
+`/raid target:"VS aka Venril sathir"`
 
 VS currently uses the same temporary composition as the encounter catalog. The VS Pop selection uses the `sockphone` tag.
 
-The built-in encounter catalog currently uses the temporary default `Warrior:1,Cleric:5,DPS:10`. Each encounter preset can be edited independently as its final composition is decided.
+The built-in encounter catalog currently uses the temporary default `Warrior:1,Cleric:5,DPS(Wizard|Rogue|Monk):10`. DPS signups select their class from a dropdown. Each encounter preset can be edited independently as its final composition is decided.
 
 ### /raidcheck create
 
-Create a new raidcheck post from a saved preset or from any custom list of roles/classes. Add `save-preset` to keep that target as a reusable choice under `/raid target`.
+Run `/raidcheck create`, then type part of the mob name and select it from autocomplete. A single editor opens with the complete composition visible. Each line uses `Role | Eligible classes | Count`; save the form to update the preset and post its checklist.
 
 Example:
 
-`/raidcheck create target:"VS aka Venril sathir" needs:"Warrior:1,Cleric:3,Enchanter:1,Wizard:1" timeframe:"Tonight @ 8:00 PM" tag:"batphone" channel:#raid-check`
+For example: `DPS | Wizard, Rogue, Monk | 10`. Edit any role or count directly, delete a line, or add a new role such as `Tagger | Monk | 1`.
 
-Create and save a Vindi preset:
+Members signing up for a multi-class role receive a class dropdown. The checklist records both their display name and selected class.
 
-`/raidcheck create target:"Vindi" needs:"Warrior:2,Cleric:7,DPS:10" save-preset:"vindi" channel:#raid-check`
-
-Roles can list the classes allowed to fill them. Separate eligible classes with `|`:
-
-`/raidcheck create target:"Vindi" needs:"Tank(Warrior|Shadow Knight|Paladin|Ranger):2,Cleric:7,DPS:10" save-preset:"vindi" channel:#raid-check`
-
-Members signing up for a multi-class role receive a class dropdown. The checklist records both their display name and selected class. To restrict a role to one class, use `Tank(Warrior):2`; plain requirements such as `Warrior:2` continue to work.
+Recognized classes and abbreviations are: Enchanter (`ENC`), Magician (`MAG`), Necromancer (`NEC`), Wizard (`WIZ`), Cleric (`CLR`), Druid (`DRU`), Shaman (`SHM`), Bard (`BRD`), Monk (`MNK`), Ranger (`RNG`), Rogue (`ROG`), Paladin (`PAL`), Shadow Knight (`SHD`), and Warrior (`WAR`). Abbreviations are expanded in the checklist, so `DPS(WIZ|ROG|MNK):10` displays Wizard, Rogue, and Monk.
 
 ### /raidcheck edit
 
-Update an existing raidcheck by message ID:
+Run `/raidcheck edit`, search for the mob with autocomplete, and edit the same prefilled composition. Updated presets remain available in `/raid` autocomplete.
 
-`/raidcheck edit message-id:123456789012345678 needs:"Warrior:0,Cleric:3,Enchanter:2,Wizard:1" timeframe:"Tonight @ 9:00 PM" tag:"sockphone"`
+### /raidcheck remove
 
-Or update a saved target preset. The preset remains available in `/raid target` autocomplete:
+Search for a raid target and remove it after confirmation:
 
-`/raidcheck edit preset:"vindi" needs:"Warrior:2,Cleric:8,DPS:10"`
+`/raidcheck remove target:<mob name>`
+
+Only a Raid Leader or member with Manage Channels permission can remove targets. Existing posted raidchecks are left in place.
 
 ## Notes
 
